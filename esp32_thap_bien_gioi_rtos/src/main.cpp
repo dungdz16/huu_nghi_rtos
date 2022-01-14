@@ -136,13 +136,6 @@ void setup() {
                           1,
                           NULL,
                           1);
-  xTaskCreatePinnedToCore(measureTask,
-                          "Measure Task",
-                          1024 * 3,
-                          NULL,
-                          1,
-                          NULL,
-                          1);
   xTaskCreatePinnedToCore(SOSHandleTask,
                           "SOS Handle Task",
                           1024 * 2,
@@ -184,12 +177,16 @@ void measureTask(void* parameter)
 {
   while(1)
   {
-    if (xSemaphoreTake(sem_measure, 10) == pdTRUE)
-    {
+    // if (xSemaphoreTake(sem_measure, 100) == pdTRUE)
+    // {
       read_sensor_parameter();
+      delay(100);
       publish_sensor_parameter();
-    }
+      delay(100);
+    //}
     a9g_get_gps(&latitude, &longitude, &year, &day, &month, &hour, &minute, &second);
+    vTaskDelete(NULL);
+    //delay(500);
   }
 }
 
@@ -218,7 +215,14 @@ void SOSHandleTask(void* parameter)
 }
 void measureTimerCallback(TimerHandle_t xTimer)
 {
-  xSemaphoreGive(sem_measure);
+  //xSemaphoreGive(sem_measure);
+  xTaskCreatePinnedToCore(measureTask,
+                          "Measure Task",
+                          1024 * 3,
+                          NULL,
+                          2,
+                          NULL,
+                          1);
 }
 
 void IRAM_ATTR sos()
@@ -458,7 +462,6 @@ void read_dust_sensor()
 
 void read_environment_temp()
 {
-  dht11.begin();
   temp = dht11.readTemperature();
   if (!isnan(temp))
   {
