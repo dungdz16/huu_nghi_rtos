@@ -18,7 +18,7 @@
 #define dust_sensor (32) //pin reads analog signal from dust sensor
 #define led_dust_sensor (33) //pin outputs digital signal to control led in dust sensor
 
-#define dht_sensor (27)//pin read digital signal (onewire) from dht sensor
+#define dht_sensor (14)//pin read digital signal (onewire) from dht sensor
 
 #define soil_moisture_sensor (34)//pin read analog signal from soil moisture sensor
 
@@ -35,7 +35,7 @@
 #define motor_right_enable (0)
 #define motor_left_enable (4)
 #define motor_right_pin (2)
-#define motor_left_pin (26)
+#define motor_left_pin (15)
 #define lcd_i2c_address 0x27
 #define lcd_cols 20
 #define lcd_rows 4
@@ -153,7 +153,7 @@ void setup() {
   sem_measure = xSemaphoreCreateBinary();
   sem_sos = xSemaphoreCreateBinary();
   tim_measure =  xTimerCreate("Measure Timer",
-                              60000,
+                              15000,  
                               true,
                               0,
                               measureTimerCallback);
@@ -444,6 +444,7 @@ void read_dust_sensor()
   if (dust < 0)
   {
     dust = 0;
+    Serial.printf("Dust fail\n");
   }  
   else
   {
@@ -457,6 +458,7 @@ void read_dust_sensor()
 
 void read_environment_temp()
 {
+  dht11.begin();
   temp = dht11.readTemperature();
   if (!isnan(temp))
   {
@@ -613,7 +615,9 @@ void a9g_send_sms(double X_location, double Y_location, uint16_t year, uint8_t d
   a9g.println("AT+CMGF=1"); // Configuring TEXT mode
   //for(int i=0;i<2000000;i++);
   delay(500);
-  a9g.println("AT+CMGS=\"0869186397\"");//change ZZ with country code and xxxxxxxxxxx with phone number to sms
+  //a9g.println("AT+CMGS=\"0869186397\"");
+  a9g.println("AT+CMGS=\"0914989855\"");
+  //change ZZ with country code and xxxxxxxxxxx with phone number to sms
   //for(int i=0;i<5000000;i++);
   delay(500);
   a9g.print(message); //text content

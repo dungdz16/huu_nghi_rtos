@@ -62,6 +62,19 @@ void setup()
   Serial.begin(9600);
   Serial2.begin(9600);
   ds18b20.begin(); 
+
+  analogWrite(motor_fan_left_pin, 0);
+  analogWrite(motor_fan_right_pin, 0);
+
+  analogWrite(motor_cylinder_left_pin, 0);
+  analogWrite(motor_cylinder_right_pin, 0);
+
+  analogWrite(motor_can_left_pin, 0);
+  analogWrite(motor_can_right_pin, 0);
+
+  analogWrite(motor_tray_left_pin, 0);
+  analogWrite(motor_tray_right_pin, 0);
+
   //setup_wifi();
   client.setServer(mqtt_server, 1883);
   client.setCallback(callback);
