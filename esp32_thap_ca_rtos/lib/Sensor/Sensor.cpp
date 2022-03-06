@@ -31,6 +31,7 @@ uint16_t Sensors::Get_DO_ug(uint32_t temp)
 
   uint16_t V_saturation = (uint32_t)CAL1_V + (uint32_t)35 * temp - (uint32_t)CAL1_T * 35;
   result = ADC_Voltage * DO_Table[temp] / V_saturation;
+  result -= 2000;
 
   return result;
 }

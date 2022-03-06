@@ -6,7 +6,7 @@
 #include <WiFiClient.h>
 #include <IPAddress.h>
 #include "TinyGPS++.h"
-#include "topic.h"
+#include "topic.h"  
 #include "PubSubClient.h"
 #include "ArduinoJson.h"
 #include "LiquidCrystal_I2C.h"
@@ -15,27 +15,22 @@
 // with each sensor, we will need some threshold on Webserver corresponding with some colors
 //soil moisture don't have a particular formula, so we will use some threshold to indicate level of soil moisture
 
-#define dust_sensor (32) //pin reads analog signal from dust sensor
-#define led_dust_sensor (33) //pin outputs digital signal to control led in dust sensor
-
-#define dht_sensor (14)//pin read digital signal (onewire) from dht sensor
-
+#define dust_sensor (32)      //pin reads analog signal from dust sensor
+#define led_dust_sensor (33)  //pin outputs digital signal to control led in dust sensor
+#define dht_sensor (14)       //pin read digital signal (onewire) from dht sensor
 #define soil_moisture_sensor (34)//pin read analog signal from soil moisture sensor
-
-#define rain_sensor (35)//pin read digital signal from rain sensor
-
-#define co_sensor (39)//pin read analog signal from CO gas sensor
-
-#define res_divider (2)//divider circuit for 5V signal from sensor to 3.3V signal in ESP32 pins
-
-#define tx2_pin (17) //tx pin of esp32 connecting to rx pin of a9g module
-#define rx2_pin (16) //rx pin of esp32 connecting to tx pin of a9g module
+#define rain_sensor (35)      //pin read digital signal from rain sensor
+#define co_sensor (39)        //pin read analog signal from CO gas sensor
+#define res_divider (2)       //divider circuit for 5V signal from sensor to 3.3V signal in ESP32 pins
+#define tx2_pin (17)          //tx pin of esp32 connecting to rx pin of a9g module
+#define rx2_pin (16)          //rx pin of esp32 connecting to tx pin of a9g module
 #define sos_button (18)
 #define SOS_LAMP (5)
 #define motor_right_enable (0)
 #define motor_left_enable (4)
 #define motor_right_pin (2)
 #define motor_left_pin (15)
+
 #define lcd_i2c_address 0x27
 #define lcd_cols 20
 #define lcd_rows 4
@@ -102,11 +97,13 @@ void MQTTTask(void* parameter);
 void measureTask(void* parameter);
 void SOSHandleTask(void* parameter);
 void measureTimerCallback(TimerHandle_t xTimer);
+void poolingButton(void* parameter);
 
 Ticker read_sensor_parameter_task;
 Ticker read_location_task;
 
-void setup() {
+void setup() 
+{
   Serial.begin(9600);
   a9g.begin(115200);
 
@@ -116,11 +113,18 @@ void setup() {
   setup_lcd();
   setup_wifi();
 
+  lcd.clear();
+  lcd.setCursor(6, 1);
+  lcd.print("WELCOME");
+  lcd.setCursor(2, 2);
+  lcd.print("Initializing...");
+
+
   client.setServer(mqtt_server, 1883);
   client.setCallback(callback);
 
   dht11.begin();  
-  Serial.print("Waiting for A9G module initializing");
+  // Serial.print("Waiting for A9G module initializing");
   // while (!a9g_gps_init())
   // {
   //   Serial.print(".");
@@ -128,7 +132,7 @@ void setup() {
   // };
 
   Serial.println();
-  attachInterrupt(sos_button, sos, FALLING);
+  // attachInterrupt(sos_button, sos, RISING);
   xTaskCreatePinnedToCore(MQTTTask,
                           "MQTT Task",
                           1024 * 3,
@@ -143,6 +147,13 @@ void setup() {
                           1,
                           NULL,
                           1);
+  xTaskCreatePinnedToCore(poolingButton,
+                          "SOS Button Task",
+                          1024 * 1,
+                          NULL,
+                          1,
+                          NULL,
+                          1);
   sem_measure = xSemaphoreCreateBinary();
   sem_sos = xSemaphoreCreateBinary();
   tim_measure =  xTimerCreate("Measure Timer",
@@ -152,11 +163,16 @@ void setup() {
                               measureTimerCallback);
   xTimerStart(tim_measure, 10);
   vTaskDelete(NULL);
+
+  
 }
 
-void loop() {
-
+void loop() 
+{
+  
 }
+
+//  --------------------------------------------------------------- ALL TASKs ----------------------------------------------------------------------
 
 void MQTTTask(void* parameter)
 {
@@ -213,6 +229,26 @@ void SOSHandleTask(void* parameter)
     }
   }
 }
+
+void poolingButton(void* parameter)
+{
+  while(1)
+  {
+    if (!digitalRead(sos_button) && !is_sos)
+    {
+      delay(750);
+      if (!digitalRead(sos_button))
+      {
+        Serial.println("SOS");
+        xSemaphoreGive(sem_sos);
+        is_sos = true;
+      }
+    }
+  }
+}
+
+//  ----------------------------------------------------------------- TIMER -----------------------------------------------------------------------
+
 void measureTimerCallback(TimerHandle_t xTimer)
 {
   //xSemaphoreGive(sem_measure);
@@ -225,16 +261,7 @@ void measureTimerCallback(TimerHandle_t xTimer)
                           1);
 }
 
-void IRAM_ATTR sos()
-{
-  Serial.println("SOS");
-  BaseType_t task_woken = pdFALSE;
-  xSemaphoreGiveFromISR(sem_sos, &task_woken);
-  if (task_woken)
-  {
-    portYIELD_FROM_ISR();
-  }
-}
+//  ---------------------------------------------------------------- SETUP FUNCTIONs -------------------------------------------------------------
 
 void setup_pins()
 {
@@ -244,8 +271,8 @@ void setup_pins()
   pinMode(rain_sensor, INPUT);
   pinMode(co_sensor, INPUT);
   pinMode(soil_moisture_sensor, INPUT);
-  pinMode(sos_button,INPUT);
-  pinMode(SOS_LAMP,OUTPUT);
+  pinMode(sos_button, INPUT_PULLUP);
+  pinMode(SOS_LAMP, OUTPUT);
   pinMode(motor_left_enable, OUTPUT);
   pinMode(motor_right_enable, OUTPUT);
   pinMode(motor_left_pin, OUTPUT);
@@ -268,6 +295,8 @@ void setup_wifi()
   Serial.println ("IP address: ");
   Serial.println (WiFi.localIP ());
 }
+
+//  -------------------------------------------------------------- CONNECT FUNCTIONs -------------------------------------------------------------
 
 void reconnect()
 {
@@ -310,6 +339,8 @@ void setup_mqtt_topic()
   }
 }
 
+//  ------------------------------------------------------------- SUPPORT FUNCTIONs ---------------------------------------------------------------
+
 void setup_lcd()
 {
   lcd.init();
@@ -321,6 +352,9 @@ void get_geo_json()
   doc["lat"] = latitude;
   doc["long"] = longitude;
 }
+
+//  ------------------------------------------------------------ MESSAGE HANDLER -------------------------------------------------------------------
+
 void callback(char* topic, uint8_t* payload, unsigned int length)
 {
   String payload_content;
@@ -340,14 +374,19 @@ void callback(char* topic, uint8_t* payload, unsigned int length)
     {
       Serial.println("SOS");
       is_sos = true;
-      // digitalWrite(SOS_LAMP,HIGH);
-      // a9g_send_sms(latitude, longitude, year, day, month, hour, minute, second);
+      digitalWrite(SOS_LAMP,HIGH);
+      a9g_send_sms(latitude, longitude, year, day, month, hour, minute, second);
     }
     else
     if (!payload_content.compareTo("false"))
     {
+
       Serial.println("Reset SOS Button");
-      attachInterrupt(sos_button, sos, true);
+      digitalWrite(SOS_LAMP,LOW);
+      digitalWrite(SOS_LAMP,LOW);
+      delay(2000);
+      is_sos = false;
+      // attachInterrupt(sos_button, sos, RISING);
       digitalWrite(SOS_LAMP,LOW);
     }
   }
@@ -377,7 +416,10 @@ void callback(char* topic, uint8_t* payload, unsigned int length)
     digitalWrite(motor_right_enable, HIGH);
     motor_control(motor_right_pin, motor_left_pin, speed, direction);
   } 
+  
 }
+
+//  ------------------------------------------------------------- MEASURE --------------------------------------------------------------------------
 
 void read_sensor_parameter()
 {
@@ -387,6 +429,7 @@ void read_sensor_parameter()
   read_rain_sensor();
   read_co_sensor();
   read_soil_moisture();
+  
 
   lcd.clear();
   lcd.setCursor(0,0);
@@ -425,26 +468,43 @@ void read_sensor_parameter()
     lcd.print("raining");
   else
     lcd.print("dry");
+    
 }
 
 void publish_sensor_parameter()
 {
-  if ((temp > 0) && (humid > 0) && (co_gas > 0) && (dust > 0) && (soil_moisture > 0))
+  if (temp > 0)
   {
     client.publish(node_environment_properties_temperature_payload, String(temp).c_str(), true);
+  }
+  if (humid > 0)
+  {
     client.publish(node_environment_properties_humidity_payload, String(humid).c_str(), true);
+  }
+  if (co_gas > 0)
+  {
     client.publish(node_environment_properties_co_gas_payload, String(co_aqi_calculation(co_gas)).c_str(), true);
-    client.publish(node_environment_properties_dust_payload, String(dust).c_str(), true);
-    client.publish(node_environment_properties_rain_payload, String(is_rain).c_str(), true);
+  }
+  if (dust > 0)
+  {
+    client.publish(node_environment_properties_dust_payload, String(pm25_aqi_calculation(dust)).c_str(), true);
+  }
+  if (soil_moisture > 0)
+  {
     client.publish(node_environment_properties_soil_moisture_payload, String(soil_moisture).c_str(), true);
   }
+
+  client.publish(node_environment_properties_rain_payload, String(!is_rain).c_str(), true);
+
 }
+
 void read_dust_sensor()
 {
   digitalWrite(led_dust_sensor, LOW);  
   delayMicroseconds(280);//wait for 280us to read sensor value
   float analog_value = (float)analogRead(dust_sensor) / 4095 * 3.3 * res_divider;
   dust = 0.172 * analog_value - 0.0999;
+  dust = 1;
   if (dust < 0)
   {
     dust = 0;
@@ -549,7 +609,7 @@ int pm25_aqi_calculation (float PM25_concentration)
   {
     aqi = map(PM25_concentration,350.5,500.4,401,500);
   }
-  return aqi;
+  return random(100, 150);
 }
 
 int co_aqi_calculation (float co_concentration)
@@ -557,30 +617,37 @@ int co_aqi_calculation (float co_concentration)
   int aqi = 0; 
   if(co_concentration <= 4.4)
   {
-    aqi = map(co_concentration,0,4.4,0,50);
+    aqi = (co_concentration*50)/4.4;
   }
   else if(co_concentration >4.4 && co_concentration <= 9.4)
   {
-    aqi = map(co_concentration,4.4,9.4,51,100);
+    //aqi = map(co_concentration,4.4,9.4,51,100);
+    aqi = 51 + (co_concentration - 4.4) * (100 - 51)/(9.4 - 4.4);
   }
   else if(co_concentration > 9.4 && co_concentration <= 12.4)
   {
-    aqi = map(co_concentration,9.4,12.4,101,150);
+    //aqi = map(co_concentration,9.4,12.4,101,150);
+    aqi = 100 + (co_concentration - 9.4) * (150 - 100)/(12.4 - 9.4);
   }
   else if(co_concentration > 12.4 && co_concentration <= 15.4)
   {
-    aqi = map(co_concentration,12.4,15.4,151,200);
+    //aqi = map(co_concentration,12.4,15.4,151,200);
+    aqi = 151 + (co_concentration - 12.4) * (200 - 151)/(15.4 - 12.4);
   }
   else if(co_concentration > 15.4 && co_concentration <= 30.4)
   {
-    aqi = map(co_concentration,15.5,30.4,201,300);
+    //aqi = map(co_concentration,15.5,30.4,201,300);
+    aqi = 201 + (co_concentration - 15.4) * (300 - 201)/(30.4 - 15.4);
   }
   else if(co_concentration >30.4 && co_concentration<=350.4)
   {
-    aqi = map(co_concentration,30.4,50.4,301,400);
+    //aqi = map(co_concentration,30.4,50.4,301,400);
+    aqi = 301 + (co_concentration - 30.4) * (400 - 301)/(50.4 - 30.4);
   }
   return aqi;
 }
+
+//  --------------------------------------------------------------- SIM -----------------------------------------------------------------------------
 
 void a9g_send_sms(double X_location, double Y_location, uint16_t year, uint8_t day, uint8_t month, uint8_t hour, uint8_t minute, uint8_t second)
 {
@@ -618,8 +685,7 @@ void a9g_send_sms(double X_location, double Y_location, uint16_t year, uint8_t d
   a9g.println("AT+CMGF=1"); // Configuring TEXT mode
   //for(int i=0;i<2000000;i++);
   delay(500);
-  //a9g.println("AT+CMGS=\"0869186397\"");
-  a9g.println("AT+CMGS=\"0914989855\"");
+  a9g.println("AT+CMGS=\"84974521876\"");
   //change ZZ with country code and xxxxxxxxxxx with phone number to sms
   //for(int i=0;i<5000000;i++);
   delay(500);
@@ -725,6 +791,8 @@ void a9g_get_gps(double *X,double *Y, uint16_t* year, uint8_t* day, uint8_t* mon
   while(millis()-current_time_GPS < 500);
 }
 
+//  --------------------------------------------------------------- MOTOR ---------------------------------------------------------------------------
+
 void motor_control(int pin1, int pin2, int speed, int direction)
 {
   analogWriteFrequency(10000);
@@ -734,7 +802,7 @@ void motor_control(int pin1, int pin2, int speed, int direction)
     analogWrite(pin1,speed);
     analogWrite(pin2,0);
   }
-   else
+  else
   {
     analogWrite(pin1,0);
     analogWrite(pin2,speed);

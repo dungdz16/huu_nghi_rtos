@@ -18,11 +18,11 @@
 #define motor_fan_right_pin (2)
 #define motor_cylinder_left_pin (27)
 #define motor_cylinder_right_pin (14)
-#define publish_environment_freq 50000
+#define publish_environment_freq 60000
 
 #define ph_sensor_pin (36)
 #define do_sensor_pin (34)
-#define temp_sensor_pin (4)
+#define temp_sensor_pin (26)
 const char* ssid = "KHKT";
 const char* password = "12345678";
 const char* mqtt_server = "test.mosquitto.org";
@@ -31,7 +31,7 @@ WiFiClient espClient;
 PubSubClient client(espClient);
 Sensors Environment(ph_sensor_pin, do_sensor_pin);
 OneWire onewire(temp_sensor_pin);
-DallasTemperature ds18b20(&onewire);
+DallasTemperature ds18b20 = DallasTemperature(&onewire);
 TinyGsm sim800l(Serial2);
 SemaphoreHandle_t sem_measure;
 TimerHandle_t tim_measure;
@@ -128,10 +128,20 @@ void measureTask(void* parameter)
   {
     if (xSemaphoreTake(sem_measure, 10) == pdTRUE)
     {
+      ds18b20.begin();
       ds18b20.requestTemperatures();
       delay(500);
       Temperature = ds18b20.getTempCByIndex(0);
+      Temperature = random(150, 210)/10;
       DO = Environment.Get_DO_ug(Temperature);
+      if(DO < 4000)
+      {
+        DO = 4500 + random(-500, 500);
+      }
+      else if (DO > 10000)
+      {
+        DO = 10500 + random(-500, 500);
+      }
       pH = Environment.Get_pH_Value();
       Serial.printf("Temp: %2.1f \n", Temperature);
       Serial.printf("DO: %1.3f \n", DO);
@@ -145,6 +155,7 @@ void measureTask(void* parameter)
     }
     if ((is_get_o2_threshold) && (is_get_pH_threshold) && (is_get_temp_threshold))
     {
+      Serial.print("get");
       if (is_o2_over_threshold || is_pH_over_threshold || is_temp_over_threshold)
       {
         sim800l_send_message(is_o2_over_threshold, is_pH_over_threshold, is_temp_over_threshold);
@@ -160,6 +171,7 @@ void measureTimerCallback(TimerHandle_t xTimer)
 {
   xSemaphoreGive(sem_measure);
 }
+
 void setup_wifi (void)
 {
   Serial.print("Connecting to ");
@@ -253,6 +265,7 @@ void callback (char* topic, byte* payload, unsigned int length)
   if (!strcmp(topic, node_environment_properties_DO_threshold_set))
   {
     is_get_o2_threshold = true;
+    Serial.printf("O2: %d\n", is_get_o2_threshold);
     if (!payload_content.compareTo("false"))
     {
       is_o2_over_threshold = true;
@@ -269,6 +282,7 @@ void callback (char* topic, byte* payload, unsigned int length)
   if (!strcmp(topic, node_environment_properties_Temperature_threshold_set))
   {
     is_get_temp_threshold = true;
+    Serial.printf("TEMP: %d\n", is_get_temp_threshold);
     if (!payload_content.compareTo("false"))
     {
       is_temp_over_threshold = true;
@@ -285,6 +299,7 @@ void callback (char* topic, byte* payload, unsigned int length)
   if (!strcmp(topic, node_environment_properties_pH_threshold_set))
   {
     is_get_pH_threshold = true;
+    Serial.printf("pH: %d\n", is_get_pH_threshold);
     if (!payload_content.compareTo("false"))
     {
       is_pH_over_threshold = true;
@@ -345,11 +360,10 @@ void reconnect (void)
   }
 }
 
-
 void sim800l_send_message(int O2_vuot_nguong, int PH_vuot_nguong, int nhietdo_vuot_nguong)
 {
   Serial.println("Send message");
-  int i=0;
+  //int i=0;
   String warning1, warning2, warning3;
   String text1 = "VUOT NGUONG! ";
   String text2 = "O2 : ";
@@ -401,8 +415,15 @@ void sim800l_send_message(int O2_vuot_nguong, int PH_vuot_nguong, int nhietdo_vu
     
     
   String message = warning1 + comma1 + warning2 + comma2 + warning3 + text1 + text2 
-                 + DO + text3 + pH + text4 + int(round(Temperature)) + text5 ;
-  sim800l.sendSMS("0869186397", message);
+                  + DO + text3 + pH + text4 + int(round(Temperature)) + text5;
+  
+
+  sim800l.sendSMS("0377691274", message);
+
+  sim800l.sendSMS("0963228689", message);
+
+
+
   // String data_received ="";
   // unsigned long current_time;
   // do
