@@ -46,10 +46,16 @@ float co_gas;
 bool is_rain;
 bool message_sent_error = 0;
 bool is_sos = false;
-double latitude, longitude;
+double latitude = 0;
+double longitude = 0;
+bool is_temp_over_thres = false;
+bool is_co_over_thresold = false;
+bool is_dust_over_threshold = false;
+uint8_t count = 10;
 uint16_t year;
 uint8_t day, month, hour, minute, second;
-
+String userPhone1 = "\"0974521876\"";
+String userPhone2= "\"0378431581\"";
 DHT dht11(dht_sensor, DHT11);
 WiFiClient espClient;
 PubSubClient client(espClient);
@@ -84,7 +90,8 @@ int co_aqi_calculation (float co_concentration);
 
 void updateSerial();
 void a9g_AT_check();
-void a9g_send_sms(double X_location, double Y_location, uint16_t year, uint8_t day, uint8_t month, uint8_t hour, uint8_t minute, uint8_t second);
+void a9g_send_sms(double X_location, double Y_location, String userPhone);
+void a9g_send_burn_sms(double X_location, double Y_location, String userPhone);
 bool a9g_gps_init();
 void a9g_get_gps(double *X,double *Y, uint16_t* year, uint8_t* day, uint8_t* month, uint8_t* hour, uint8_t* minute, uint8_t* second);
 
@@ -157,7 +164,7 @@ void setup()
   sem_measure = xSemaphoreCreateBinary();
   sem_sos = xSemaphoreCreateBinary();
   tim_measure =  xTimerCreate("Measure Timer",
-                              15000,  
+                              pdMS_TO_TICKS(30000),  
                               true,
                               0,
                               measureTimerCallback);
@@ -200,6 +207,40 @@ void measureTask(void* parameter)
       publish_sensor_parameter();
       delay(100);
     //}
+    if (temp > 50)
+    {
+      is_temp_over_thres = true;
+    }
+    else
+    {
+      is_temp_over_thres = false;
+    }
+    if (co_gas > 100)
+    {
+      is_co_over_thresold = true;
+    }
+    else
+    {
+      is_co_over_thresold = false;
+    }
+    if (pm25_aqi_calculation(dust) > 150)
+    {
+      is_dust_over_threshold = true;
+    }
+    else
+    {
+      is_dust_over_threshold = false;
+    }
+    if ((temp > 50) || (co_gas > 100) || (pm25_aqi_calculation(dust) > 150))
+    {
+      if (count == 10)
+      {
+		  a9g_send_burn_sms(latitude, longitude, userPhone1);
+		  a9g_send_burn_sms(latitude, longitude, userPhone2);
+		count = 0;
+      }
+      count ++;
+    }
     a9g_get_gps(&latitude, &longitude, &year, &day, &month, &hour, &minute, &second);
     vTaskDelete(NULL);
     //delay(500);
@@ -224,9 +265,10 @@ void SOSHandleTask(void* parameter)
       lcd.print("SOS!");
       lcd.setCursor(0,2);
       lcd.print("Sending message...");
-      a9g_send_sms(latitude, longitude, year, day, month, hour, minute, second);
-      while (xSemaphoreTake(sem_sos, 0) == pdTRUE);
+        a9g_send_sms(latitude, longitude, userPhone1);
+        a9g_send_sms(latitude, longitude, userPhone2);
     }
+     while (xSemaphoreTake(sem_sos, 0) == pdTRUE);
   }
 }
 
@@ -349,8 +391,8 @@ void setup_lcd()
 
 void get_geo_json()
 {
-  doc["lat"] = latitude;
-  doc["long"] = longitude;
+    doc["lat"] = latitude;
+    doc["long"] = longitude;
 }
 
 //  ------------------------------------------------------------ MESSAGE HANDLER -------------------------------------------------------------------
@@ -375,7 +417,8 @@ void callback(char* topic, uint8_t* payload, unsigned int length)
       Serial.println("SOS");
       is_sos = true;
       digitalWrite(SOS_LAMP,HIGH);
-      a9g_send_sms(latitude, longitude, year, day, month, hour, minute, second);
+        a9g_send_sms(latitude, longitude, userPhone1);
+        a9g_send_sms(latitude, longitude, userPhone2);
     }
     else
     if (!payload_content.compareTo("false"))
@@ -649,35 +692,12 @@ int co_aqi_calculation (float co_concentration)
 
 //  --------------------------------------------------------------- SIM -----------------------------------------------------------------------------
 
-void a9g_send_sms(double X_location, double Y_location, uint16_t year, uint8_t day, uint8_t month, uint8_t hour, uint8_t minute, uint8_t second)
+void a9g_send_sms(double X_location, double Y_location, String userPhone)
 {
   String text = "Toa do X: " ;
   String text2 = ", Y: " ;
-  String text3 = ", Date: " ;
-  String text4 = ", Time: " ;
-  String text5 = "/";
-  String text6 = ":";
-  String text8 = "0";
-  String A9G_minute,A9G_second;
-
-  if(minute < 10)
-  {
-    A9G_minute = text8 + minute;
-  }
-  else
-  {
-    A9G_minute = minute;
-  }
-  if(second < 10)
-  {
-    A9G_second = text8 + second;
-  }
-  else
-  {
-    A9G_second = second;
-  }
   
-  String message = text + String(X_location,6) + text2 + String(Y_location,6) + text3 + day + text5 + month + text5 + year + text4 + hour + text6 + A9G_minute + text6 + A9G_second;
+  String message = text + String(X_location,10) + text2 + String(Y_location,10);
   String data_received = "";
   a9g.println("AT"); //Once the handshake test is successful, it will back to OK
   delay(500);
@@ -685,7 +705,7 @@ void a9g_send_sms(double X_location, double Y_location, uint16_t year, uint8_t d
   a9g.println("AT+CMGF=1"); // Configuring TEXT mode
   //for(int i=0;i<2000000;i++);
   delay(500);
-  a9g.println("AT+CMGS=\"84974521876\"");
+  a9g.println("AT+CMGS=" + userPhone);
   //change ZZ with country code and xxxxxxxxxxx with phone number to sms
   //for(int i=0;i<5000000;i++);
   delay(500);
@@ -740,6 +760,45 @@ bool a9g_gps_init()
     Serial.println("A9G Initializes Successfully"); 
     return true;
   }
+}
+
+void a9g_send_burn_sms(double X_location, double Y_location, String userPhone)
+{
+  String text = "Toa do X: " ;
+  String text2 = ", Y: " ;
+  String nhietdo = "Nhiet do: " + String(temp, 1) + "oC\n";
+  String doam = "Do Am: " + String(humid, 1) + "%\n";
+  String bui = "Bui: " + String(pm25_aqi_calculation(dust)) + "AQI\n";
+  String CO = "CO:" + String(co_gas, 3) + "ppm\n";
+  String message = "CANH BAO NGUY CO CHAY RUNG\n" +text + String(X_location,6) + text2 + String(Y_location,6) + "\n"
+                  + nhietdo + doam + bui + CO;
+//  String data_received = "";
+  if (is_co_over_thresold)
+  {
+    message += "Nong do khi CO vuot nguong\n";
+  }
+  if (is_dust_over_threshold)
+  {
+    message += "Nong do bui vuot nguong\n";
+  }
+  if (is_temp_over_thres)
+  {
+    message+= "Nhiet do vuot nguong\n";
+  }
+  a9g.println("AT"); //Once the handshake test is successful, it will back to OK
+  delay(500);
+  //for(int i=0;i<2000000;i++);
+  a9g.println("AT+CMGF=1"); // Configuring TEXT mode
+  //for(int i=0;i<2000000;i++);
+  delay(500);
+  a9g.println("AT+CMGS=" + userPhone);
+  //change ZZ with country code and xxxxxxxxxxx with phone number to sms
+  //for(int i=0;i<5000000;i++);
+  delay(500);
+  a9g.print(message); //text content
+  //for(int i=0;i<3000000;i++);
+  delay(500);
+  a9g.write(26);
 }
 
 void a9g_get_gps(double *X,double *Y, uint16_t* year, uint8_t* day, uint8_t* month, uint8_t* hour, uint8_t* minute, uint8_t* second )
